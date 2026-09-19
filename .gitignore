@@ -1,0 +1,33 @@
+# Pages web enregistrées (contiennent souvent des données personnelles) et leurs ressources
+*.html
+*.htm
+*_files/
+
+# Artefacts de construction
+build/
+dist/
+*.o
+*.so
+*.a
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Données de mesure : jamais dans le dépôt de code (cf. corpus/ pour les fixtures versionnées)
+*.tcj
+*.tcx
+*.blf
+*.asc
+*.trc
+*.mf4
+*.log
+!corpus/**
+
+# Environnement local
+.env
+.DS_Store
