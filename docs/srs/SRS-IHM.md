@@ -1,7 +1,7 @@
 # SRS-IHM — Interface graphique (`clemcan/ui/`)
 
 > Spécification des exigences logicielles du composant **interface**.
-> Version 1.0 — 2026-10-07. Dérivée de `SPEC.md` v1.2, qui prévaut en cas d'écart.
+> Version 1.1 — 2026-11-25. Dérivée de `SPEC.md` v1.3, qui prévaut en cas d'écart.
 > Conventions : `docs/srs/README.md`.
 
 ---
@@ -17,7 +17,7 @@ accès au protocole du noyau, aucune écriture de fichier hors d'une commande du
 
 ## 2. Références
 
-`SPEC.md` v1.2 ; `SRS-ANA.md` (I-API) ; `SRS-NOY.md`.
+`SPEC.md` v1.3 ; `SRS-ANA.md` (I-API) ; `SRS-NOY.md`.
 
 ## 3. Interfaces
 
@@ -38,16 +38,17 @@ accès au protocole du noyau, aucune écriture de fichier hors d'une commande du
   *Source* : `EX-ARC-06`, `D-27`, §4 de `SPEC.md`. *Vérification* : celle d'`EX-ARC-06` ; analyse
   automatique des imports de `ui/`.
 - **SRS-IHM-ARC-02** [A] La boucle d'événements NE DOIT jamais être bloquée plus de 200 ms ; toute
-  opération longue (ouverture de trace, chargement de base, export) s'exécute hors du fil
-  principal avec indication de progression et possibilité d'annulation quand la commande le
-  permet.
+  opération longue, dont l'ouverture de trace et le chargement de base, s'exécute hors du fil
+  principal avec indication de progression.
   *Source* : `EX-VUE-06`. *Vérification* : celle d'`EX-VUE-06`.
-- **SRS-IHM-ARC-03** [A] L'interface NE DOIT afficher que des données décimées par le modèle ;
-  aucune vue ne demande le flux complet.
-  *Source* : §4 de `SPEC.md`, `EX-CAP-05`. *Vérification* : au profil nominal, aucun abonnement
-  non décimable n'est ouvert par l'interface.
+- **SRS-IHM-ARC-03** [A] Quand le noyau déleste un flux d'affichage, l'interface DOIT le signaler
+  sur les vues concernées, qui gèlent ou s'appauvrissent sans bloquer l'interface. Elle n'ouvre
+  elle-même aucun abonnement : elle passe par les modèles de la couche d'analyse.
+  *Source* : §4 de `SPEC.md`, `EX-CAP-05`, `D-39`. *Vérification* : celle d'`EX-CAP-05`, avec
+  l'interface en rendu hors écran ; délestage signalé (fumée) ; boucle d'événements jamais bloquée
+  plus de 200 ms.
 - **SRS-IHM-ARC-04** [A] L'interface DOIT pouvoir se reconnecter à un démon en cours
-  d'enregistrement et restituer son état (canaux, enregistrement, pertes, alarmes) sans
+  d'enregistrement et restituer son état (canaux, enregistrement, pertes ; [B] alarmes) sans
   l'interrompre.
   *Source* : dérivée — `EX-ARC-01` rend l'interface jetable : la relancer doit retrouver le
   travail en cours. *Vérification* : interface tuée et relancée pendant un enregistrement ; état
@@ -64,31 +65,38 @@ accès au protocole du noyau, aucune écriture de fichier hors d'une commande du
 - **SRS-IHM-BUS-02** [A] Les avertissements de configuration, les pertes et toute dégradation
   au-delà de l'enveloppe DOIVENT être signalés de façon visible et persistante jusqu'à acquittement
   par l'utilisateur.
-  *Source* : `EX-BUS-05`, `EX-CAP-04`, `EX-PRF-03`. *Vérification* : IHM, perte provoquée sur bus
-  virtuel.
+  *Source* : `EX-BUS-05`, `EX-CAP-04`, `EX-PRF-03` ; persistance dérivée — un signalement fugace
+  passe inaperçu pendant un enregistrement sans opérateur devant l'écran. *Vérification* : IHM,
+  perte provoquée sur bus virtuel.
 - **SRS-IHM-BUS-03** [A] Le mode de contrôleur de chaque canal (écoute seule, acquittement,
-  émission) DOIT être affiché ; l'activation du mode acquittement exige une confirmation
-  explicite.
-  *Source* : `EX-SAF-01`. *Vérification* : IHM.
+  émission) DOIT être affiché. L'interface DOIT demander une confirmation explicite à l'ouverture
+  d'un canal dont le matériel n'offre pas l'écoute seule, à l'activation du mode acquittement, et à
+  la restauration d'un mode acquittement depuis une session ou un profil ; sans confirmation, le
+  canal ne s'ouvre pas, ou s'ouvre en écoute seule dans le cas d'un profil.
+  *Source* : `EX-SAF-01`, `EX-SES-04`. *Vérification* : IHM ; logique vérifiée par celles
+  d'`EX-SAF-01` et d'`EX-SES-04` en ligne de commande.
 
 ### 4.3 Vues
 
-- **SRS-IHM-VUE-01** [A] La **trace déroulante** DOIT offrir un défilement virtuel continu, des
-  colonnes configurables, la pause et le dépliage des signaux d'une trame.
+- **SRS-IHM-VUE-01** [A] La **trace déroulante** DOIT offrir un défilement continu, des colonnes
+  configurables, la pause et le dépliage des signaux d'une trame.
   *Source* : `EX-VUE-01`. *Vérification* : IHM.
 - **SRS-IHM-VUE-02** [A] La **vue groupée** DOIT afficher une ligne par identifiant mise à jour sur
-  place, avec mise en évidence des octets changés.
+  place, avec période mesurée (moyenne, minimum, maximum, gigue), compteur d'occurrences, date de
+  dernière réception et mise en évidence des octets changés.
   *Source* : `EX-VUE-02`. *Vérification* : IHM.
-- **SRS-IHM-VUE-03** [A] La **fenêtre de valeurs** DOIT afficher valeur, format, âge, franchissement
-  de bornes et regroupements.
+- **SRS-IHM-VUE-03** [A] La **fenêtre de valeurs** DOIT afficher la valeur courante au format
+  choisi (brut, physique, libellé), l'âge de la dernière mise à jour, le franchissement de bornes et
+  le regroupement libre.
   *Source* : `EX-VUE-03`. *Vérification* : IHM.
 - **SRS-IHM-VUE-04** [A] La vue **statistiques et santé** DOIT afficher les grandeurs
   d'`EX-VUE-04`, indiquer la sous-estimation possible de la charge en présence d'erreurs, et ne
   pas afficher de charge sans débit connu.
   *Source* : `EX-VUE-04`. *Vérification* : IHM.
 - **SRS-IHM-VUE-05** [B] La vue d'**analyse sans base** DOIT présenter bits basculants, octets
-  changeants, propositions de compteur et de contrôle, et permettre de créer un signal candidat
-  depuis une sélection de bits.
+  changeants, propositions de compteur et de contrôle, corrélation entre un intervalle et les
+  changements observés, et permettre de créer un signal candidat depuis une sélection de bits,
+  injecté dans la base en cours d'édition.
   *Source* : `EX-VUE-05`. *Vérification* : IHM.
 - **SRS-IHM-VUE-06** [A] Les vues DOIVENT être des fenêtres ancrables, disposables sur plusieurs
   écrans ; leur disposition est enregistrée dans la session et restituée.
@@ -109,14 +117,17 @@ accès au protocole du noyau, aucune écriture de fichier hors d'une commande du
 - **SRS-IHM-GRA-04** [A] La sélection DOIT être synchronisée dans les deux sens entre graphe, trace
   et repères.
   *Source* : `EX-GRA-05`. *Vérification* : IHM.
-- **SRS-IHM-GRA-05** [A] Un zoom sur une heure de trace au profil nominal, 20 signaux tracés, DOIT
-  être rendu en moins de 200 ms.
-  *Source* : `O-03`, `EX-VUE-06`. *Vérification* : mesure en rendu hors écran sur la machine de
-  référence.
+- **SRS-IHM-GRA-05** [A] Pendant un zoom sur une heure de trace au profil nominal, la boucle
+  d'événements NE DOIT jamais être bloquée plus de 200 ms.
+  *Source* : `EX-VUE-06` ; scénario de zoom dérivé — `O-03` retient la latence de zoom comme
+  critère de choix de la bibliothèque de tracé. *Vérification* : sonde de la boucle d'événements
+  en rendu hors écran sur la machine de référence x86-64, scénario publié dans `bench/`.
 - **SRS-IHM-GRA-06** [B] Les signaux énumérés DOIVENT être tracés avec leurs libellés en ordonnée.
   *Source* : `EX-GRA-08`. *Vérification* : IHM.
-- **SRS-IHM-GRA-07** [B] Le graphe DOIT être exportable en PNG et SVG aux dimensions demandées,
-  depuis l'interface et depuis la ligne de commande par rendu hors écran.
+- **SRS-IHM-GRA-07** [B] Le graphe DOIT être exportable en PNG et SVG aux dimensions demandées, et
+  ses séries affichées en CSV (`SRS-ANA-GRA-08`), depuis l'interface. L'IHM fournit la commande
+  d'export d'image au registre par le point d'extension de `SRS-ANA-ARC-06`, ce qui la rend
+  exécutable en ligne de commande par rendu hors écran.
   *Source* : `EX-GRA-09`, `EX-ARC-06`. *Vérification* : celle d'`EX-GRA-09`.
 
 ### 4.5 Éditeur de base
@@ -142,7 +153,8 @@ accès au protocole du noyau, aucune écriture de fichier hors d'une commande du
   levées et retombées.
   *Source* : `EX-EXP-06`. *Vérification* : celle d'`EX-EXP-06`, partie IHM.
 - **SRS-IHM-ANA-01** [B] L'interface DOIT permettre de poser, parcourir et commenter des repères,
-  d'extraire un intervalle, de comparer deux traces et de générer un rapport.
+  d'extraire un intervalle avec ses options (bases, règles, repères dans une session jointe), de
+  comparer deux traces et de générer un rapport.
   *Source* : `EX-ANA-01`, `EX-ANA-02`, `EX-ANA-03`, `EX-ANA-04`. *Vérification* : IHM.
 
 ### 4.7 Émission
@@ -150,13 +162,15 @@ accès au protocole du noyau, aucune écriture de fichier hors d'une commande du
 - **SRS-IHM-SAF-01** [C] Dès qu'un canal est armé, un **indicateur d'émission** DOIT être affiché en
   permanence sur chaque fenêtre.
   *Source* : `EX-SAF-05`. *Vérification* : IHM.
-- **SRS-IHM-SAF-02** [C] L'**arrêt d'urgence** DOIT être accessible en une action unique, par un
-  bouton toujours visible et par un raccourci clavier actif dans toutes les fenêtres, y compris
-  quand un dialogue modal est ouvert.
+- **SRS-IHM-SAF-02** [C] L'**arrêt d'urgence** DOIT être accessible en une action unique : par un
+  bouton visible sur chaque fenêtre dès qu'un canal est armé, par quelque client que ce soit, et
+  par un raccourci clavier actif dans chaque fenêtre de l'application, y compris quand un dialogue
+  modal est ouvert. La touche par défaut et la portée hors de l'application relèvent du point
+  ouvert IHM-3.
   *Source* : `EX-SAF-05` ; dialogue modal dérivé — un arrêt d'urgence masqué par un dialogue ne
-  remplit pas son office. *Vérification* : IHM, dialogue ouvert.
+  remplit pas son office. *Vérification* : IHM, canal armé par un second client, dialogue ouvert.
 - **SRS-IHM-SAF-03** [C] L'armement DOIT passer par un dialogue nommant le canal, affichant la liste
-  blanche (et signalant une entrée générique) et les risques de collision signalés.
+  blanche (et signalant une entrée générique) et nommant les identifiants en risque de collision.
   *Source* : `EX-SAF-02`, `EX-SAF-03`, `EX-SAF-04`. *Vérification* : IHM.
 - **SRS-IHM-REJ-01** [C] L'interface DOIT offrir l'éditeur tabulaire du jeu de test, la création
   depuis un intervalle de trace, l'état du galop d'essai et le rapport de fidélité.
@@ -164,8 +178,8 @@ accès au protocole du noyau, aucune écriture de fichier hors d'une commande du
 
 ### 4.8 Session, profils, langues
 
-- **SRS-IHM-SES-01** [A] L'interface DOIT ouvrir et enregistrer sessions et profils, et signaler
-  précisément les fichiers manquants à l'ouverture.
+- **SRS-IHM-SES-01** [A] L'interface DOIT ouvrir et enregistrer sessions et profils, lister les
+  profils, et signaler précisément les fichiers manquants à l'ouverture.
   *Source* : `EX-SES-03`, `EX-SES-04`. *Vérification* : IHM.
 - **SRS-IHM-I18N-01** [A] Toute chaîne visible DOIT passer par le mécanisme de traduction, en
   chaînes complètes paramétrées ; le français est livré complet ; repli sur l'anglais pour toute
@@ -174,10 +188,16 @@ accès au protocole du noyau, aucune écriture de fichier hors d'une commande du
   d'`EX-I18N-04`.
 - **SRS-IHM-I18N-02** [A] La langue DOIT être sélectionnable dans l'interface et mémorisée dans les
   préférences de l'utilisateur, pas dans la session ; un fichier de traduction déposé dans le
-  répertoire prévu est proposé sans recompilation.
+  répertoire prévu est proposé et appliqué sans recompilation.
   *Source* : `EX-I18N-02`, `EX-I18N-03`. *Vérification* : celle d'`EX-I18N-03`.
 - **SRS-IHM-I18N-03** [A] Nombres, dates et durées affichés DOIVENT suivre la locale.
   *Source* : `EX-I18N-05`. *Vérification* : IHM sous `fr_FR` et `en_US`.
+
+### 4.9 Sécurité
+
+- **SRS-IHM-SEC-01** [A] L'interface N'OUVRE AUCUN port réseau en écoute, en TCP comme en UDP.
+  *Source* : `EX-SEC-01`, `D-35`. *Vérification* : celle d'`EX-SEC-01` pour l'interface en rendu
+  hors écran.
 
 ---
 
