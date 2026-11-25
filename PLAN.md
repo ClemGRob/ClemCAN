@@ -1,7 +1,9 @@
 # ClemCAN — Plan de développement
 
-> Jalons vérifiables. Accompagne `SPEC.md` (exigences) et `CLAUDE.md` (contrat de travail).
-> Version : 1.0 — 2026-09-19.
+> Jalons vérifiables. Accompagne `SPEC.md` (exigences), `docs/srs/` (exigences par composant) et
+> `CLAUDE.md` (contrat de travail).
+> Version : 1.1 — 2026-11-25, alignée sur `SPEC.md` v1.3. Les efforts n'ont pas été réestimés ;
+> le jalon B13, ajouté en 1.1, reste à estimer.
 
 ---
 
@@ -12,7 +14,7 @@
 Les efforts sont exprimés en **jours-homme (j)**, pas en dates calendaires, parce que la cadence
 de travail n'est pas fixée. Conversions :
 
-| Cadence | Jours utiles par mois | Durée du v1 complet (≈ 312 j) |
+| Cadence | Jours utiles par mois | Durée du v1 complet (≈ 312 j, hors B13) |
 |---|---|---|
 | Temps plein | ≈ 21 | ≈ 15 mois |
 | Soirées et week-ends (≈ 15 h/semaine) | ≈ 8 | ≈ 39 mois |
@@ -35,19 +37,24 @@ peut les valider seule.
 Un jalon n'est validé que si **les quatre** conditions suivantes sont réunies :
 
 1. Le critère de vérification du jalon est exécuté et **réussi**, par une commande reproductible.
-2. Chaque exigence `EX-*` listée porte au moins un test automatisé nommé avec son identifiant.
+2. Chaque exigence `EX-*` listée, et chaque exigence SRS qui en découle, porte au moins un test
+   nommé avec son identifiant, de la classe déclarée (auto, ⚙, IHM : `D-23`).
 3. L'intégration continue est verte sur Linux x86-64, Linux ARM64 et Windows x86-64.
 4. Les décisions ouvertes assignées à ce jalon sont tranchées par une fiche écrite.
 
 Aucune dérogation silencieuse : un jalon partiellement atteint est **non atteint**, et le reste
 est déplacé explicitement dans le jalon suivant.
 
+Les exigences « étendues à chaque palier » (`EX-AUT-01`, `EX-AUT-04`, `EX-SES-01`) s'appliquent à
+tout jalon qui livre une commande ou un objet de session : la commande existe en ligne de
+commande, sans invite ni serveur graphique, et l'objet est enregistré dans la session.
+
 ### 0.4 Les trois paliers
 
 | Palier | Nom | Ce que tu peux faire à l'issue | Effort |
 |---|---|---|---|
 | **A** | **Observer** | Brancher, voir, enregistrer, décoder, tracer, exporter. Outil déjà utile au quotidien. | ≈ 97 j |
-| **B** | **Comprendre** | Éditer la base, contrôler la cohérence, déclencher, réassembler J1939 et ISO-TP, comparer, rapporter. | ≈ 140 j |
+| **B** | **Comprendre** | Éditer la base, contrôler la cohérence, déclencher, réassembler J1939 et ISO-TP, comparer, rapporter, piloter un démon distant. | ≈ 140 j + B13 |
 | **C** | **Agir** | Rejouer un jeu de test sur un système réel, sous garde-fous, et automatiser des essais. | ≈ 75 j |
 
 ---
@@ -61,14 +68,15 @@ est déplacé explicitement dans le jalon suivant.
 **Contenu** : arborescence (`core/` en C, `clemcan/` en Python, `tests/`, `bench/`, `docs/adr/`),
 chaînes de construction des deux langages, intégration continue sur les trois plateformes,
 formatage et analyse statique imposés, squelette de ligne de commande, script de mise en place des
-bus virtuels de test, générateur de charge synthétique, matrice de traçabilité vide mais générée.
+bus virtuels de test, injecteur de charge paramétré (`SRS-OUT-01`), matrice de traçabilité
+(`EX-*` et SRS) vide mais générée.
 
 **Vérification**
 ```
 clemcan --version                  # affiche version, plateforme, backends détectés
 make ci                           # construction + tests + analyse statique, 3 plateformes vertes
-scripts/vcan-up.sh 4              # 4 bus virtuels prêts
-bench/inject --channels 4 --rate 15000 --duration 10   # générateur de charge fonctionnel
+scripts/vcan-up.sh 8              # 8 bus virtuels prêts (profil nominal)
+bench/inject --profile nominal --duration 10   # injecteur fonctionnel, séquences numérotées
 ```
 
 **Exigences** : préparatoires. **Dépend de** : rien.
@@ -81,14 +89,15 @@ bench/inject --channels 4 --rate 15000 --duration 10   # générateur de charge 
 
 **Contenu** : noyau C, réception SocketCAN, horodatage noyau ou matériel, tampon circulaire
 préalloué sans allocation dans la boucle, écriture du journal en ajout seul, index reconstructible,
-comptage des pertes (débordement noyau et débordement interne), métadonnées de trace, rotation de
-fichiers, surveillance de l'espace disque.
+comptage des pertes (débordement noyau et débordement interne), métadonnées de trace,
+surveillance de l'espace disque.
 
 **Vérification**
 ```
 # 1. Enveloppe nominale, sans perte
-bench/soak --channels 4 --rate 15000 --duration 3600
-  → trames enregistrées == trames injectées ; pertes déclarées == 0 ; RSS stable à ±5 %
+bench/soak --profile nominal --duration 3600
+  → trames enregistrées == trames injectées ; pertes déclarées == 0 ;
+    mémoire stable au sens d'EX-PRF-01
 
 # 2. Survie à la coupure brutale, 100 fois
 tests/robustness/kill-loop.sh 100
@@ -99,12 +108,12 @@ rm trace.tcx && clemcan index rebuild trace.tcj && clemcan verify trace.tcj
   → contenu relu identique bit à bit
 
 # 4. Honnêteté sous surcharge
-bench/soak --channels 4 --rate 40000 --kernel-buffer tiny
+bench/soak --profile nominal --rate-factor 3 --kernel-buffer tiny
   → pertes déclarées == injectées − enregistrées (à zéro trame près)
 ```
 
 **Exigences** : `EX-ARC-03`, `EX-CAP-01` à `EX-CAP-05`, `EX-JNL-01` à `EX-JNL-03`, `EX-PRF-01`,
-`EX-PRF-03`, `EX-ROB-04`, `EX-BUS-01`, `EX-BUS-03`.
+`EX-PRF-03`, `EX-ROB-01`, `EX-ROB-04`, `EX-BUS-01`, `EX-BUS-03`.
 **Tranche** : O-02 (disposition du journal). **Dépend de** : A0.
 
 ---
@@ -113,8 +122,9 @@ bench/soak --channels 4 --rate 40000 --kernel-buffer tiny
 
 **Objectif** : rendre le noyau indépendant de tout client, condition de l'autonomie embarquée.
 
-**Contenu** : `clemcand`, protocole de contrôle versionné, flux de trames décimé pour les clients,
-anneau en mémoire partagée, liaison Python, aucun port en écoute par défaut, mode bibliothèque liée.
+**Contenu** : `clemcand`, protocole de contrôle versionné, abonnements d'affichage (délestables)
+et d'évaluation (bornés, jamais délestés) (`D-16`, `D-24`, `D-39`), anneau en mémoire partagée,
+liaison Python, droits d'accès locaux, aucun port en écoute par défaut, mode bibliothèque liée.
 
 **Vérification**
 ```
@@ -122,15 +132,18 @@ anneau en mémoire partagée, liaison Python, aucun port en écoute par défaut,
 clemcand --record trace.tcj & ; python -m tests.client_crash_loop 10min
   → trace continue, sans trou, pertes == 0
 
-# 2. Pas de socket ouvert par défaut
-clemcand & ; ss -lntp | grep clemcand   → aucune ligne
+# 2. Pas de socket ouvert par défaut, en TCP comme en UDP (D-35)
+clemcand & ; ss -lntup | grep clemcand   → aucune ligne
 
 # 3. Contrat de protocole
 pytest tests/protocol/   → sérialisation, versions, rejet d'une version incompatible
+
+# 4. Accès local
+connexion depuis un compte hors du groupe clemcan   → refusée
 ```
 
 **Exigences** : `EX-ARC-01`, `EX-ARC-02`, `EX-ARC-04`, `EX-ARC-05`, `EX-ARC-06`, `EX-ROB-03`,
-`EX-SEC-01`. **Tranche** : O-01. **Dépend de** : A1.
+`EX-SEC-01`, `EX-SEC-04`. **Tranche** : O-01. **Dépend de** : A1.
 
 ---
 
@@ -139,24 +152,30 @@ pytest tests/protocol/   → sérialisation, versions, rejet d'une version incom
 **Objectif** : que le matériel réellement disponible soit un citoyen de première classe sur les
 deux systèmes.
 
-**Contenu** : backend PCAN-Basic dans le noyau C (Windows et Linux), horodatage matériel, CAN FD,
-trames d'erreur, déclaration du niveau Tier 1, passerelle Tier 2 vers python-can, affichage du
-niveau dans l'interface et dans les métadonnées de trace.
+**Contenu** : matériel PEAK par SocketCAN `peak_usb` sous Linux et par PCAN-Basic sous Windows
+(`D-15`), bus virtuel ClemCAN sous Windows, horodatage matériel, CAN FD, rapports d'erreur,
+déclaration du niveau Tier 1 ; écoute seule par défaut, confirmation pour un matériel sans
+*listen-only*, mode acquittement explicite ; pont Tier 2 lancé et surveillé par le démon, en
+réception seule (`D-30`, `D-36`) ; niveau inscrit dans les métadonnées de trace.
 
 **Vérification**
 ```
-# 1. Même boîtier, deux chemins, horodatages cohérents  (PCAN-USB requis)
-tests/hardware/timestamp-compare.py --a socketcan:can0 --b pcan:PCAN_USBBUS1
-  → écart médian borné, documenté ; source déclarée = « matériel »
+# 1. Deux canaux PEAK sur un même bus, horodatages cohérents  (PCAN-USB requis)
+tests/hardware/timestamp-compare.py --a socketcan:can0 --b socketcan:can1
+  → écart dans l'incertitude déclarée ; source déclarée = « matériel »
 
-# 2. Windows
+# 2. Écoute seule  (PCAN-USB requis)
+tests/hardware/listen-only.py   → aucun acquittement reçu par un second nœud
+
+# 3. Windows
 make ci-windows   → capture, enregistrement, relecture identiques à Linux
 
-# 3. Tier 2 dégradé mais fonctionnel
-pytest tests/backends/tier2/   → ouverture, capture, niveau annoncé « Tier 2 »
+# 4. Tier 2 dégradé mais fonctionnel
+pytest tests/backends/tier2/   → ouverture par le protocole, capture, niveau annoncé « Tier 2 »,
+                                 kill -9 du pont → événement de fin de canal, autres canaux intacts
 ```
 
-**Exigences** : `EX-BUS-02` à `EX-BUS-05`, `EX-CAP-01`, `EX-POR-01`.
+**Exigences** : `EX-BUS-02` à `EX-BUS-05`, `EX-CAP-01`, `EX-SAF-01`, `EX-POR-01`.
 **Dépend de** : A1, A2.
 
 ---
@@ -178,7 +197,8 @@ clemcan formats matrix --check
   → échec de construction si la matrice publiée diverge du comportement réel
 
 clemcan convert big.blf out.tcj && clemcan verify out.tcj
-  → 50 M de trames converties ; navigation < 1 s par saut (EX-JNL-05)
+  → conversion vérifiée ; sur la trace de 200 M de trames du banc, navigation < 1 s par saut
+    au 95ᵉ centile, mémoire ≤ 500 Mo (EX-JNL-05)
 ```
 
 **Exigences** : `EX-FMT-01` à `EX-FMT-06`, `EX-JNL-05`. **Dépend de** : A1.
@@ -199,7 +219,8 @@ physique, libellé) ; décodage paresseux ; plusieurs bases par canal avec prior
 pytest tests/decode/vectors/
   → chaque vecteur (base + trame + valeur attendue) passe, y compris :
     multiplexeur imbriqué, valeur de multiplexeur non définie (→ « non applicable », pas 0),
-    signal signé à cheval sur 3 octets en Motorola, flottant double, DLC FD 9 à 15
+    signal signé à cheval sur 3 octets en Motorola, flottant double, DLC 9 à 15 en classique
+    et en FD
 
 pytest tests/decode/oracle/   → concordance avec cantools sur 10⁵ trames aléatoires par base
 bench/decode --signals 1,10,100   → coût processeur proportionnel au nombre de signaux affichés
@@ -214,16 +235,16 @@ bench/decode --signals 1,10,100   → coût processeur proportionnel au nombre d
 
 **Objectif** : les trois vues devant lesquelles on passe l'essentiel du temps.
 
-**Contenu** : interface Qt ; trace déroulante à défilement virtuel ; vue groupée par identifiant
+**Contenu** : interface Qt ; trace déroulante à défilement continu ; vue groupée par identifiant
 avec période mesurée, gigue, compteur et mise en évidence des octets qui changent ; fenêtre de
 valeurs avec format au choix, âge de la donnée et bornes ; filtres d'affichage simples ; fenêtres
-ancrables.
+ancrables ; délestage du flux d'affichage signalé (`D-39`).
 
 **Vérification**
 ```
-tests/ui/latency.py --channels 4 --rate 15000
-  → première trame affichée < 100 ms ; aucune opération d'interface bloquée > 200 ms
-  → pendant ce temps : pertes d'enregistrement == 0 (EX-CAP-05)
+tests/ui/latency.py --profile nominal
+  → remise au modèle < 100 ms au 99ᵉ centile ; boucle d'événements jamais bloquée > 200 ms
+  → consommateurs ralentis : pertes d'enregistrement == 0, délestage compté (EX-CAP-05)
 
 pytest tests/views/   → périodes, gigues et compteurs corrects sur trace de référence
 ```
@@ -239,14 +260,16 @@ pytest tests/views/   → périodes, gigues et compteurs corrects sur trace de r
 
 **Contenu** : escalier par défaut, ligne et points par signal, points d'échantillonnage en
 surimpression, axes multiples, curseurs et écarts Δt/Δy, synchronisation avec la trace,
-décimation préservant les extrema, interruption de tracé pour les multiplexés non applicables.
+décimation préservant les extrema (couche 2, `D-39`), interruption de tracé pour les multiplexés
+non applicables.
 
 **Vérification**
 ```
 tests/graph/spike.py
   → impulsion isolée de 1 ms dans 1 h de trace : visible au zoom le plus large (EX-GRA-06)
 
-tests/graph/zoom-latency.py --signals 20 --duration 1h   → chaque zoom < 200 ms
+tests/graph/zoom-latency.py --duration 1h
+  → boucle d'événements jamais bloquée > 200 ms pendant le zoom (critère d'O-03)
 tests/graph/mux-gap.py   → signal multiplexé non applicable : trou, pas de valeur maintenue
 ```
 
@@ -257,13 +280,16 @@ tests/graph/mux-gap.py   → signal multiplexé non applicable : trou, pas de va
 ### A8 — Statistiques et santé du bus — 5 j
 
 **Contenu** : charge du bus, trames par seconde, histogramme des temps de cycle, compteurs de
-trames d'erreur, bus-off, identifiants apparus ou disparus, trames perdues.
+rapports d'erreur, bus-off, identifiants apparus ou disparus, trames perdues. Durée de trame
+exacte en classique, FD ISO et FD non ISO (`D-37`).
 
 **Vérification**
 ```
-tests/stats/busload.py --rate-known
+tests/stats/frame-duration.py   → écart nul en bits sur les vecteurs de référence
+                                   (classique, FD ISO, FD non ISO)
+tests/stats/busload.py --rate-known   (⚙ PCAN)
   → charge calculée à moins de 2 % de la valeur théorique (bourrage de bits inclus)
-tests/stats/errors.py   → injection de trames d'erreur et de bus-off : détectés, datés, tracés
+tests/stats/errors.py   → rapports d'erreur et bus-off injectés : détectés, datés, tracés
 ```
 
 **Exigences** : `EX-VUE-04`, `EX-BUS-06` (détection ; la politique de reprise vient en C1).
@@ -276,29 +302,37 @@ tests/stats/errors.py   → injection de trames d'erreur et de bus-off : détect
 **Objectif** : que le palier A soit un logiciel qu'on installe et qu'on retrouve, pas une maquette.
 
 **Contenu** : format de session lisible et diffable ; ouverture tolérante aux fichiers manquants ;
-mécanisme de traduction avec catalogue ouvert et repli sur l'anglais ; formats localisés ;
-empaquetage en exécutable autonome pour les trois plateformes ; documentation utilisateur du
-palier A ; matrice de traçabilité publiée.
+profils ; mécanisme de traduction avec catalogue ouvert et repli sur l'anglais ; formats
+localisés ; toutes les commandes du palier A en ligne de commande, sans invite (`D-34`) ;
+empaquetage en exécutable autonome pour les trois plateformes, pont Tier 2 et python-can inclus,
+et livrable du démon seul (`D-36`) ; banc nocturne sur les machines de référence x86-64 et ARM64,
+chiffres publiés ; documentation utilisateur du palier A ; matrice de traçabilité publiée.
 
 **Vérification**
 ```
 clemcan session save s.clemcan && clemcan session load s.clemcan
   → restitution intégrale ; diff Git lisible après modification d'un seul signal
+clemcan profile open banc   → profil en mode acquittement sans option : ouvert en écoute seule
+tests/ci/headless.sh   → suite fonctionnelle, entrée standard fermée, sans serveur graphique
 tests/i18n/completeness.py   → aucune chaîne concaténée ; repli anglais fonctionnel
-dist/clemcan-linux-x86_64 --version   → démarre sans environnement Python installé
+dist/clemcan-linux-x86_64 --version   → démarre sans environnement Python installé ;
+                                        canal Tier 2 ouvert sur le backend virtuel de python-can
 dist/clemcan-linux-arm64 --version ; dist/clemcan-windows.exe --version
+dist/clemcand-linux-x86_64   → démon seul ; ouverture d'un canal Tier 2 refusée avec message
+bench/   → demi-profil ARM64 60 min sans perte non déclarée ; publication nocturne présente
 clemcan trace matrix --requirements   → toute exigence du palier A porte un test
 ```
 
-**Exigences** : `EX-SES-01` à `EX-SES-03`, `EX-I18N-01` à `EX-I18N-05`, `EX-POR-01` à `EX-POR-04`,
-`EX-SEC-03`, §12. **Tranche** : O-04. **Dépend de** : A7, A8.
+**Exigences** : `EX-SES-01` à `EX-SES-04`, `EX-I18N-01` à `EX-I18N-05`, `EX-POR-01` à `EX-POR-04`,
+`EX-AUT-01`, `EX-AUT-04`, `EX-PRF-02`, `EX-PRF-05`, `EX-SEC-03`, §12. **Tranche** : O-04.
+**Dépend de** : A7, A8.
 
 > **Palier A livré.** Tu peux brancher un bus, l'enregistrer sans rien perdre, l'ouvrir dans
 > n'importe quel format reçu, décoder, tracer, mesurer la santé du bus et retrouver ta session.
 
 ---
 
-## Palier B — Comprendre (≈ 140 j)
+## Palier B — Comprendre (≈ 140 j + B13)
 
 ### B1 — Écrivain DBC au diff minimal — 16 j
 
@@ -390,7 +424,8 @@ tests/codegen/compile-matrix.sh   → le code généré compile sans avertisseme
 **Contenu** : fichier de règles `.tcr` ; profils AUTOSAR E2E, CRC8 SAE-J1850, CRC15/16/32
 paramétrables ; détection assistée validée par l'utilisateur ; violations de compteur ;
 contrôles de cohérence (bornes, temps de cycle, longueur, valeur hors table, identifiant inconnu,
-émetteur inattendu).
+émetteur inattendu). Violations inscrites dans la trace en direct ; sur une trace déjà
+enregistrée, résultats d'analyse jamais écrits dans la trace (`D-32`).
 
 **Vérification**
 ```
@@ -400,16 +435,17 @@ tests/checks/autodetect.py           → sur trace de référence : compteur et 
                                        correctement, règle écrite dans .tcr, résultat reproductible
 ```
 
-**Exigences** : `EX-CHK-01` à `EX-CHK-04`. **Dépend de** : A5.
+**Exigences** : `EX-CHK-01` à `EX-CHK-04`. **Tranche** : O-08. **Dépend de** : A5.
 
 ---
 
 ### B7 — Langage d'expression unifié — 12 j
 
-**Contenu** : une grammaire, un évaluateur, quatre usages (filtres d'affichage, filtres de capture,
-alarmes, et plus tard assertions) ; opérateurs logiques et de comparaison ; fronts ; durées ;
-absence de trame ; drapeaux de contrôle ; application matérielle des filtres quand possible, avec
-indication visible.
+**Contenu** : une grammaire, un évaluateur, cinq usages (filtres d'affichage, filtres de capture
+traduits pour le noyau, déclencheurs, alarmes, et plus tard assertions) ; logique à trois valeurs
+(`D-25`) ; opérateurs logiques et de comparaison ; fronts ; durées ; absence de trame ; drapeaux
+de contrôle ; alarmes (levée, retombée, sévérité) ; application matérielle des filtres quand
+possible, avec indication visible.
 
 **Vérification**
 ```
@@ -419,11 +455,14 @@ tests/expr/hardware-filter.py  → filtre matériel appliqué ⇒ signalé comme
                                  ce qui est enregistré
 ```
 
-**Exigences** : `EX-EXP-01` à `EX-EXP-05`. **Dépend de** : B6.
+**Exigences** : `EX-EXP-01` à `EX-EXP-06`. **Dépend de** : B6.
 
 ---
 
 ### B8 — Enregistrement déclenché — 8 j
+
+**Contenu** : tampon pré-déclenchement, fenêtres déclenchées, découpage automatique, politique
+de saturation par rotation, évaluation de référence en couche 2.
 
 **Vérification**
 ```
@@ -431,24 +470,29 @@ tests/trigger/window.py --violation-at 42s --pre 10s --post 5s
   → le fichier produit contient exactement [32 s ; 47 s], aux tolérances documentées
   → l'événement de déclenchement est daté et porte l'expression qui l'a produit
 tests/trigger/multi.py   → déclenchements successifs, un fichier par déclenchement, temps continu
+tests/robustness/rotation.py   → seuls les fichiers de l'enregistrement en cours sont effacés
+bench/eval --profile nominal --rules bench/rules-ref   → 60 min, aucune évaluation abandonnée
 ```
 
-**Exigences** : `EX-TRG-01` à `EX-TRG-04`, `EX-JNL-04`, UC-2. **Dépend de** : B7.
+**Exigences** : `EX-TRG-01` à `EX-TRG-04`, `EX-JNL-04`, `EX-ROB-05`, `EX-PRF-06`, UC-2.
+**Dépend de** : B7.
 
 ---
 
 ### B9 — Transport et applicatif J1939 — 14 j
 
 **Contenu** : réassemblage BAM et RTS/CTS jusqu'à 1785 octets, temporisations normalisées, sessions
-concurrentes, abandons ; DM1 et DM2 (SPN, FMI, occurrences, lampes) ; réclamation d'adresse et NAME ;
-requête de PGN.
+concurrentes, abandons ; cas dégradés traités comme le nœud récepteur (`D-38`) ;
+`transport_incomplete` résultat d'analyse, jamais écrit dans la trace (`D-40`) ; DM1 et DM2 (SPN,
+FMI, occurrences, lampes) ; réclamation d'adresse et NAME ; requête de PGN.
 
 **Vérification**
 ```
 pytest tests/j1939/transport/
-  → nominal ; trame manquante ; trame dupliquée ; dépassement de temporisation ;
-    deux sessions simultanées sur des couples d'adresses différents ; abandon explicite ;
-    message tronqué en fin de trace (pas de blocage, pas de fuite mémoire)
+  → nominal ; trame manquante ; trame dupliquée (ignorée) ; trame retransmise sur CTS
+    (acceptée) ; dépassement de chaque temporisation à son point d'attente ; nouvelle annonce
+    pendant une session ; deux sessions simultanées sur des couples d'adresses différents ;
+    abandon explicite ; message tronqué en fin de trace (pas de blocage, pas de fuite mémoire)
 pytest tests/j1939/dm1/   → DTC décodés conformément aux vecteurs, lampes incluses
 ```
 
@@ -458,11 +502,16 @@ pytest tests/j1939/dm1/   → DTC décodés conformément aux vecteurs, lampes i
 
 ### B10 — ISO-TP et UDS en lecture — 12 j
 
+**Contenu** : ISO-TP sur trames de 8 octets, cas dégradés traités comme le récepteur (`D-38`),
+`transport_incomplete` (`D-40`) ; UDS en lecture.
+
 **Vérification**
 ```
 pytest tests/isotp/
   → trame unique, première trame + consécutives, contrôle de flux, bloc et temps de séparation,
-    adressage normal / étendu / mixte, 11 et 29 bits, temporisations dépassées, renumérotation
+    adressage normal / étendu / mixte, 11 et 29 bits, temporisations dépassées, renumérotation ;
+    numéro de séquence répété ou erroné, première trame pendant une réception, trame
+    consécutive isolée, débordement
 pytest tests/uds/read/   → services, sous-fonctions, codes de refus ; 0x22 et 0x19 décodés
 ```
 
@@ -471,6 +520,11 @@ pytest tests/uds/read/   → services, sous-fonctions, codes de refus ; 0x22 et 
 ---
 
 ### B11 — Annotations, extraction, comparaison, rapport — 14 j
+
+**Contenu** : repères, extraction d'intervalle, comparaison de traces, rapport HTML ; libellés de
+table de valeurs en graduation du graphe ; export du graphe en image (PNG, SVG) et de ses séries
+en CSV, l'export d'image étant fourni à la ligne de commande par l'interface
+(`SRS-ANA-ARC-06`).
 
 **Vérification**
 ```
@@ -481,9 +535,10 @@ tests/analysis/compare.py   → identifiants exclusifs, temps de cycle modifiés
                               trajectoire au-delà du seuil, violations apparues ou disparues
 clemcan report --from t1.tcj --range 10s:13s --out r.html
   → rapport reproductible depuis la ligne de commande, portant versions et empreintes des bases
+clemcan graph export --png g.png --size 1920x1080   → image valide aux dimensions demandées
 ```
 
-**Exigences** : `EX-ANA-01` à `EX-ANA-04`, UC-3. **Dépend de** : B7, A7.
+**Exigences** : `EX-ANA-01` à `EX-ANA-04`, `EX-GRA-08`, `EX-GRA-09`, UC-3. **Dépend de** : B7, A7.
 
 ---
 
@@ -499,6 +554,27 @@ tests/reverse/candidate.py → sélection de bits ⇒ signal candidat injecté d
 
 **Exigences** : `EX-VUE-05`. **Dépend de** : B3, A7.
 
+---
+
+### B13 — Accès distant et démarrage autonome — à estimer
+
+**Objectif** : piloter depuis un PC un démon installé sur une cible, et laisser la cible
+enregistrer seule après un redémarrage.
+
+**Contenu** : accès distant au démon en TLS 1.3 avec authentification mutuelle par certificats ;
+démarrage du démon avec le système et reprise d'un enregistrement dans un nouveau fichier.
+
+**Vérification**
+```
+pytest tests/remote/   → connexion sans certificat, avec certificat invalide, en TLS < 1.3 :
+                         refusées ; connexion valide acceptée
+tests/robustness/reboot.sh   → redémarrage brutal d'une machine virtuelle : enregistrement repris
+                               dans un nouveau fichier ; fin abrupte du précédent signalée
+```
+
+**Exigences** : `EX-SEC-02` (partie B), `EX-ROB-02`. **Tranche** : choix de la bibliothèque TLS
+(fiche, `SRS-NOY` point NOY-4). **Dépend de** : A2.
+
 > **Palier B livré.** Tu édites tes bases sans détruire les diffs, tu contrôles compteurs et CRC,
 > tu déclenches sur événement, tu lis le J1939 multi-trames et les dialogues de diagnostic, tu
 > compares deux campagnes et tu sors un rapport. Toujours aucune écriture sur le bus.
@@ -512,22 +588,26 @@ tests/reverse/candidate.py → sélection de bits ⇒ signal candidat injecté d
 **Objectif** : ouvrir l'écriture sur le bus, et la rendre difficile à déclencher par accident.
 
 **Contenu** : ordonnanceur TX dans le noyau C derrière une interface `TxSource` (le moteur réactif
-du v2 en sera un second) ; écoute seule par défaut ; armement explicite nommant l'interface, non
-mémorisé ; liste blanche d'identifiants ; avertissement de collision d'identifiant ; indicateur
-d'émission ; arrêt d'urgence ; journalisation non désactivable ; politique de reprise après bus-off.
+du v2 en sera un second) ; armement explicite nommant le canal, lié à la connexion cliente, non
+mémorisé, avec battement (homme mort, `D-33`) ; armement refusé sur un canal Tier 2 (`D-30`),
+aux clients distants par défaut et aux comptes hors du groupe d'armement ; liste blanche
+d'identifiants vide par défaut ; avertissement de collision d'identifiant ; indicateur
+d'émission ; arrêt d'urgence, y compris en ligne de commande ; journalisation non désactivable ;
+politique de reprise après bus-off. L'écoute seule est en place depuis A3.
 
 **Vérification**
 ```
 pytest tests/safety/
   → émission sans armement : refusée et tracée
-  → identifiant hors liste blanche : refusé, message explicite
-  → armement non conservé au redémarrage
+  → identifiant hors liste blanche : refusé, message explicite ; sans liste : rien n'est émis
+  → armement non conservé au redémarrage ; armement d'un canal Tier 2 refusé
   → identifiant déjà émis par un autre nœud : averti avant émission
+  → kill -9 du client armé : dernière trame < 50 ms après ; client figé : < 1 s + 50 ms
 tests/safety/estop.py   → arrêt d'urgence : plus aucune trame émise sous 50 ms (mesuré, bus virtuel)
 ```
 
-**Exigences** : `EX-SAF-01` à `EX-SAF-05`, `EX-SAF-07`, `EX-BUS-06`.
-**Tranche** : O-07. **Dépend de** : A2.
+**Exigences** : `EX-SAF-02` à `EX-SAF-05`, `EX-SAF-07`, `EX-BUS-07`, `EX-SEC-02` (partie C),
+`EX-SEC-04` (partie C). **Tranche** : O-07. **Dépend de** : A2.
 
 ---
 
@@ -553,7 +633,8 @@ pytest tests/testset/
 
 **Contenu** : exécution d'un jeu de test ; ordonnancement sur horloge absolue ; facteur d'échelle ;
 boucle ; remappage de canal ; sélection des trames par expression ; enregistrement corrélé du trafic
-émis et reçu avec marquage du sens ; rapport de fidélité ; galop d'essai obligatoire sur bus virtuel.
+émis et reçu avec marquage du sens ; rapport de fidélité ; galop d'essai obligatoire sur bus virtuel,
+jugé conjointement par le noyau et la couche 2 (`D-31`).
 
 **Vérification**
 ```
@@ -561,7 +642,8 @@ tests/replay/jitter.py --rate 5000 --duration 3600
   → gigue au 99ᵉ centile < 1 ms ; dérive cumulée < 1 ms sur 1 h
 tests/replay/correlated.py
   → la trace de sortie contient l'émis (instants réels) et le reçu, sens marqué, base de temps unique
-tests/replay/dry-run.py   → premier rejeu réel refusé si le galop d'essai virtuel n'a pas été passé
+tests/replay/dry-run.py   → premier rejeu réel refusé si le galop d'essai virtuel n'a pas été passé ;
+                            galop déclaré réussi alors qu'une émission a été refusée : non inscrit
 ```
 
 **Exigences** : `EX-REJ-03` à `EX-REJ-06`, `EX-REJ-08`, `EX-SAF-06`, `EX-PRF-04`.
@@ -587,9 +669,10 @@ tests/replay/recompute.py
 
 ### C5 — Automatisation et assertions — 10 j
 
-**Contenu** : couverture complète en ligne de commande ; assertions dans le langage `EX-EXP` avec
-contraintes de temps ; rapport lisible par machine et par humain ; codes retour ; exécution sans
-serveur graphique ni invite.
+**Contenu** : couverture complète en ligne de commande des commandes du palier C ; assertions
+dans le langage `EX-EXP` avec contraintes de temps ; rapport lisible par machine et par humain ;
+codes retour. L'exécution sans serveur graphique ni invite est exigée depuis A9 (`D-34`) ; ce
+jalon la vérifie sur les commandes du palier C.
 
 **Vérification**
 ```
@@ -615,11 +698,12 @@ et documenté, y compris la limite matérielle rencontrée.
 **Vérification**
 ```
 bench/envelope --platform all --publish
-  → x86-64 : 4 canaux classiques saturés 1 h, 0 perte ; 4 canaux FD (500k/2M) 1 h, 0 perte ;
-             mémoire stable à ±5 %
+  → x86-64 : profil nominal (4 canaux classiques et 4 canaux FD 500k/2M simultanés, saturés)
+             1 h, 0 perte ; mémoire stable au sens d'EX-PRF-01
   → ARM64  : débit maximal tenu, publié, pertes comptées ; cause de la limite identifiée
              (contrôleur SPI, latence USB ou processeur)
-  → régression de plus de 10 % par rapport à la veille ⇒ construction en échec
+  → médiane des 5 dernières exécutions dégradée de plus de 10 % par rapport à la référence
+    publiée ⇒ régression signalée
 ```
 
 **Exigences** : `EX-PRF-01`, `EX-PRF-02`, `EX-PRF-03`, `EX-PRF-05`. **Dépend de** : C3. **Risque** : R1.
@@ -660,6 +744,7 @@ Dans cet ordre, chacun étant un jalon de plein droit avec ses critères :
 | P4 | Écriture TRC, puis MF4 | 4 j puis 15 j | Demande réelle à constater d'abord |
 | P5 | Interface web de supervision | 20 j | Décision ouverte O-06, à instruire après usage embarqué réel |
 | P6 | Panneaux graphiques interactifs | 25 j | Confort, sans nouvelle capacité d'analyse |
+| P7 | Émission sur un canal Tier 2, par le pont (`D-30`) | à estimer | Le besoin d'émission v1 est couvert par le matériel PEAK ; une fiche devra dire comment le délai d'arrêt d'urgence d'`EX-SAF-05` y est tenu |
 
 ---
 
@@ -668,9 +753,9 @@ Dans cet ordre, chacun étant un jalon de plein droit avec ses critères :
 | Palier | Jalons | Effort | Matériel requis |
 |---|---|---|---|
 | A — Observer | A0 … A9 | 97 j | A3 |
-| B — Comprendre | B1 … B12 | 140 j | aucun |
+| B — Comprendre | B1 … B13 | 140 j + B13 | aucun |
 | C — Agir | C1 … C7 | 75 j | C1, C3, C6 |
-| **v1 complet** | **29 jalons** | **312 j** | |
+| **v1 complet** | **30 jalons** | **312 j + B13** | |
 
 **Chemin critique** : A0 → A1 → A2 → A4 → A5 → B1 → B3 → C2 → C3 → C6 → C7.
 Les jalons B5, B6, B9, B10 et B12 sont parallélisables : ils ne dépendent que de A5, ce qui les
