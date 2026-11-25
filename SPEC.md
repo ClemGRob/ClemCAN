@@ -1,7 +1,16 @@
 # ClemCAN — Spécification
 
 > **ClemCAN** — analyseur et éditeur CAN / CAN FD.
-> Version du document : 1.2 — 2026-10-07. Licence du projet : MIT.
+> Version du document : 1.3 — 2026-11-25. Licence du projet : MIT.
+>
+> **1.3** : arbitrage des points remontés par la revue des SRS du 2026-10-07. Pas d'émission en
+> Tier 2 en v1 ; galop d'essai jugé conjointement par le noyau et la couche 2 ; violations et
+> alarmes inscrites dans la trace en direct seulement ; délai de désarmement compté depuis le
+> constat de la perte de connexion ; aucune invite en ligne de commande dès le palier A ; aucun
+> port en écoute pour tout processus ; pont inclus dans l'exécutable autonome et lancé par le
+> démon ; durée exacte des trames FD non ISO ; cas dégradés J1939 et ISO-TP ; délestage du flux
+> d'affichage distinct de la décimation ; `transport_incomplete` résultat d'analyse ; fiches
+> `D-30` à `D-40` ; décision ouverte `O-08`. Aucun identifiant renuméroté, aucune exigence ajoutée.
 >
 > **1.2** : seconde relecture de cohérence. Écoute seule exigée dès le palier A ; surcharge
 > d'`EX-CAP-05` redéfinie côté consommateurs ; logique trivalente pour NA ; abonnements
@@ -70,7 +79,7 @@ Il ne décrit pas l'implémentation, sauf lorsqu'une contrainte d'architecture e
 | **Fonction** | Opération qui produit ou modifie une donnée ou un état : fichier, base, configuration ou état d'un canal, enregistrement, émission, export, rapport, résultat d'analyse. S'oppose à l'**interaction de visualisation** (zoom, défilement, curseurs, disposition, couleurs), qui ne produit rien (décision `D-27`). |
 | **Alarme** | Expression nommée, dotée d'une sévérité, dont la levée (passage à vrai) et la retombée (fin de vrai) sont signalées et inscrites comme événements (`EX-EXP-06`). |
 | **Profil** | Session modèle, rangée dans le répertoire des profils, ouverte par son nom pour créer une nouvelle session sans modifier le modèle (`EX-SES-04`). |
-| **Abonnement d'évaluation** | Flux de trames du noyau vers la couche 2 destiné aux contrôles, déclencheurs, alarmes et assertions : non décimé, porté par une file bornée (décision `D-24`). |
+| **Abonnement d'évaluation** | Flux de trames du noyau vers la couche 2 destiné aux contrôles, déclencheurs, alarmes et assertions : jamais délesté, porté par une file bornée (décisions `D-24`, `D-39`). |
 | **Base de données** | Fichier décrivant trames et signaux : DBC (éditable), SYM, KCD, ARXML (import seul). |
 | **Trace** | Journal horodaté de trames et d'événements, observés ou émis, éventuellement découpé en plusieurs fichiers consécutifs. Donnée de mesure : jamais modifiée en place. |
 | **Repère** | Marque nommée et commentée posée par l'utilisateur sur la base de temps. Synonymes non employés : marqueur, annotation. Un repère vit dans la session, jamais dans la trace. |
@@ -82,7 +91,8 @@ Il ne décrit pas l'implémentation, sauf lorsqu'une contrainte d'architecture e
 | **Profil de charge nominal** | Trafic de référence défini en §6.1 : canaux, débits, longueur d'identifiant, DLC, contenu des données. |
 | **Enveloppe nominale** | Profil de charge nominal tenu sans perte sur la machine de référence. Contractuellement garanti et mesuré. |
 | **Saturé** | Canal portant des trames dos à dos, au débit maximal théorique du profil considéré (formule de `EX-VUE-04`). |
-| **Décimation** | Réduction du nombre de points transmis à l'affichage, préservant les extrema. |
+| **Décimation** | Réduction du nombre de points d'une série décodée transmis à l'affichage, préservant les extrema. Faite par la couche 2 (`EX-GRA-06`). |
+| **Délestage** | Abandon, par le noyau, de trames d'un abonnement d'affichage dont le consommateur ne suit pas. Compté et signalé, sans garantie d'extrema, sans effet sur l'enregistrement (`EX-CAP-05`, `D-39`). |
 | **Gigue de période** | Écart-type des intervalles entre réceptions successives d'un même identifiant, sur une fenêtre glissante (défaut 10 s). |
 | **Erreur d'émission** | Écart *e = t_réel − t_demandé* entre l'instant où une trame est effectivement émise et celui demandé par le jeu de test. |
 | **Écoute seule** | Mode d'un canal dans lequel ClemCAN n'écrit aucun bit sur le bus : contrôleur en mode *listen-only* (surveillance de bus, ISO 11898-1), donc sans acquittement ni drapeau d'erreur (décision `D-20`). |
@@ -211,10 +221,13 @@ l'exécution : SocketCAN est une API, ses capacités dépendent du pilote.
 | Niveau | Couples (pilote, matériel) | Garanties |
 |---|---|---|
 | **Tier 1** | SocketCAN `peak_usb` + PEAK PCAN-USB / PCAN-USB FD (Linux) ; PCAN-Basic + mêmes matériels (Windows) ; bus virtuel ClemCAN (Linux et Windows, `vcan` sous Linux) | Débit du profil nominal, rapports d'erreur, détection de perte, horodatage matériel (matériels PEAK), CAN FD (PCAN-USB FD), écho d'émission horodaté |
-| **Tier 2** | Tout backend python-can (Vector, Kvaser, ixxat, slcan, gs_usb, socketcand…), et tout pilote SocketCAN non listé en Tier 1, via le pont (`D-17`) | Fonctionnel ; garanties de débit, d'horodatage et de détection de perte non assurées, déclarées comme telles |
+| **Tier 2** | Tout backend python-can (Vector, Kvaser, ixxat, slcan, gs_usb, socketcand…), et tout pilote SocketCAN non listé en Tier 1, via le pont (`D-17`) | Fonctionnel en réception ; garanties de débit, d'horodatage et de détection de perte non assurées, déclarées comme telles. Aucune émission en v1 : l'armement est refusé (`D-30`) |
 
 Le bus virtuel ne porte ni débit binaire, ni rapports d'erreur, ni horodatage matériel : il
 sert à valider le débit **logiciel** et la logique, jamais la physique du bus.
+
+Un canal Tier 2 s'ouvre par le même protocole qu'un canal Tier 1 : le démon lance alors le pont,
+le surveille, et inscrit sa fin ou son plantage comme événement de la trace (`D-36`).
 
 - **EX-BUS-01** [A] ClemCAN DOIT gérer un nombre non borné de canaux simultanés : aucune
   constante de compilation ni structure de taille fixe ne limite ce nombre. À ressources
@@ -286,14 +299,15 @@ sert à valider le débit **logiciel** et la logique, jamais la physique du bus.
   nombre déclaré égale le nombre injecté moins le nombre enregistré ; ⚙ débordement provoqué sur
   PCAN, événement « nombre inconnu » présent.
 - **EX-CAP-05** [A] Quand un consommateur (affichage, décodage pour affichage, graphe, évaluation)
-  ne suit pas, **l'enregistrement est prioritaire** : l'affichage, le décodage pour affichage et le
-  graphe décimatent ou gèlent ; la trace reste complète. Aucun consommateur n'exerce de
+  ne suit pas, **l'enregistrement est prioritaire** : le noyau déleste le flux d'affichage (§2,
+  `D-39`), et l'affichage, le décodage pour affichage et le graphe gèlent ou s'appauvrissent ; la
+  trace reste complète. Aucun consommateur n'exerce de
   contre-pression sur le noyau. Toute évaluation abandonnée (contrôles, déclencheurs, alarmes,
   assertions) est comptée et signalée selon `D-24`. La surcharge de capture elle-même (au-delà de
   l'enveloppe nominale) relève d'`EX-CAP-04` et d'`EX-PRF-03`.
   *Vérification* : sur bus virtuel, au profil nominal, consommateurs d'affichage et d'évaluation
   ralentis artificiellement (débit traité limité à 10 % du flux) pendant 10 min ; la trace ne perd
-  aucune trame, le compteur de décimation du flux d'affichage est non nul, et les évaluations
+  aucune trame, le compteur de délestage du flux d'affichage est non nul, et les évaluations
   abandonnées sont comptées avec leurs intervalles.
 
 ### 5.3 Journal natif et robustesse — `EX-JNL`
@@ -499,11 +513,22 @@ La lecture sémantique s'appuie sur **cantools**, qui NE DOIT PAS être réécri
   indexées par couple d'adresses. Temporisations par défaut de la norme, configurables :
   T1 = 750 ms, T2 = T3 = 1 250 ms, T4 = 1 050 ms, Tr = 200 ms, Th = 500 ms. Toute session
   incomplète (trame manquante, temporisation dépassée, abandon, annonce de plus de 1 785 octets)
-  produit un événement `transport_incomplete`, horodaté et compté ; la charge partielle n'est
-  jamais présentée comme un message complet ; la mémoire de la session est libérée.
-  *Vérification* : vecteurs couvrant le cas nominal, la trame manquante, la trame dupliquée, le
-  dépassement de temporisation, deux sessions simultanées, un abandon explicite, une annonce
-  hors limite ; mémoire revenue à l'état initial après 10⁴ sessions abandonnées.
+  produit un résultat d'analyse `transport_incomplete`, horodaté, compté, portant son motif,
+  visible dans la chronologie et jamais écrit dans la trace (`D-40`) ; la charge
+  partielle n'est jamais présentée comme un message complet ; la mémoire de la session est
+  libérée. Dans les cas dégradés, le réassemblage se comporte comme le nœud récepteur (`D-38`) :
+  - une `TP.DT` dont le numéro a déjà été reçu est ignorée et comptée, sauf retransmission
+    demandée par une CTS, qui remplace la donnée ;
+  - une nouvelle annonce (BAM ou RTS) pour un couple d'adresses en session clôt la session
+    ouverte comme incomplète (motif « remplacée ») et ouvre la nouvelle ;
+  - chaque attente applique la temporisation du nœud qui attend : en BAM, T1 entre deux trames ;
+    en RTS/CTS, T3 pour une CTS ou l'accusé de fin, T2 pour la première `TP.DT` après une CTS,
+    T1 entre deux `TP.DT`, T4 après une CTS de maintien. Tr et Th ne closent aucune session.
+  *Vérification* : vecteurs couvrant le cas nominal, la trame manquante, la trame dupliquée
+  (ignorée) et la trame retransmise sur CTS (acceptée), le dépassement de chaque temporisation à
+  son point d'attente, une nouvelle annonce pendant une session, deux sessions simultanées, un
+  abandon explicite, une annonce hors limite ; mémoire revenue à l'état initial après
+  10⁴ sessions abandonnées.
 - **EX-DEC-08** [B] **J1939 applicatif** : DM1 et DM2 (SPN, FMI, compteur d'occurrences, état des
   lampes, bit de méthode de conversion SPN), réclamation d'adresse et champ NAME (J1939-81),
   requête de PGN.
@@ -515,9 +540,19 @@ La lecture sémantique s'appuie sur **cantools**, qui NE DOIT PAS être réécri
   127 ms, 0xF1–0xF9 = 100 à 900 µs, autres valeurs traitées comme 127 ms). Temporisations
   N_Bs et N_Cr par défaut 1 000 ms, configurables. L'appariement requête/réponse est configuré
   par paire d'identifiants. Une transmission incomplète suit la règle de `EX-DEC-07`
-  (événement `transport_incomplete`). ISO-TP sur trames FD de plus de 8 octets est hors v1 (§8).
+  (résultat `transport_incomplete`). ISO-TP sur trames FD de plus de 8 octets est hors v1 (§8).
+  Dans les cas dégradés, le réassemblage se comporte comme le récepteur de la norme (`D-38`) :
+  - un numéro de séquence différent de l'attendu (erroné ou répété) clôt la transmission comme
+    incomplète (motif « numéro de séquence erroné ») ;
+  - une trame unique ou une première trame reçue pendant une réception en cours clôt celle-ci
+    comme incomplète (motif « interrompue ») et ouvre la nouvelle ; une trame consécutive reçue
+    hors de toute réception est ignorée et comptée ;
+  - un contrôle de flux « débordement » clôt la transmission comme incomplète (motif
+    « débordement »).
   *Vérification* : vecteurs couvrant chaque type de trame, chaque adressage, le repli du numéro
-  de séquence, l'attente, le débordement, la trame consécutive manquante et la temporisation.
+  de séquence, l'attente, le débordement, la trame consécutive manquante et la temporisation, un
+  numéro de séquence répété, un numéro erroné, une première trame pendant une réception, une
+  trame consécutive isolée.
 - **EX-DEC-10** [B] **UDS en lecture** (ISO 14229-1) : identification de tous les services et
   codes de refus de la norme, y compris l'appariement d'une réponse finale après un ou plusieurs
   refus 0x78 (réponse en attente) ; décodage de `0x22` (numéro d'identifiant et données brutes,
@@ -569,11 +604,14 @@ Le DBC ne sait pas décrire un compteur ni un CRC : ces règles vivent dans un f
   est un **dupliqué** (une violation par répétition) ; à partir de *N* trames, la série entière
   est **une seule** violation **figé**, horodatée au début, close à la reprise, portant le nombre
   de trames, et ses répétitions ne sont pas comptées comme dupliquées. Chaque violation est
-  horodatée, comptée, visible dans la trace et dans la chronologie, et exploitable comme condition
-  (cf. `EX-EXP`). Un saut couvrant une perte déclarée (`EX-CAP-04`) ou une évaluation abandonnée
+  horodatée, comptée, visible dans la chronologie et exploitable comme condition (cf. `EX-EXP`) ;
+  pendant un enregistrement, elle est aussi inscrite dans la trace comme événement. Sur une trace
+  déjà enregistrée, elle reste un résultat d'analyse, jamais écrit dans la trace (`D-32`). Un saut couvrant une perte déclarée (`EX-CAP-04`) ou une évaluation abandonnée
   (`D-24`) est classé « non évaluable », pas violation.
   *Vérification* : vecteurs contenant chaque violation à des instants connus, une répétition de
-  longueur *N* − 1 puis *N*, et un saut coïncidant avec une perte déclarée.
+  longueur *N* − 1 puis *N*, et un saut coïncidant avec une perte déclarée ; en direct, violations
+  présentes dans la trace ; sur une trace déjà enregistrée, violations présentes dans les
+  résultats et empreinte de la trace inchangée.
 - **EX-CHK-04** [B] Contrôles de cohérence supplémentaires : franchissement des bornes physiques ;
   temps de cycle hors tolérance (trop lent, trop rapide, gigue de période), la référence venant du
   `.tcr`, à défaut de l'attribut DBC `GenMsgCycleTime` avec une tolérance par défaut de ± 20 %,
@@ -625,11 +663,13 @@ les modèles, la vue par un test de fumée.
   ISO 11898-1 : bits de la trame, bourrage dynamique, bits de bourrage fixes et compteur de
   bourrage en FD ISO, 3 bits d'intertrame ; en FD, phase nominale et phase de données à leurs
   débits respectifs, la commutation ayant lieu aux points d'échantillonnage de BRS et du
-  délimiteur de CRC. Les trames d'erreur et de surcharge, non observables comme trames, ne sont
+  délimiteur de CRC. En FD non ISO, la durée se calcule de même selon la spécification CAN FD 1.0
+  de Bosch (2012), qui ne porte pas de compteur de bourrage (`D-37`). Les trames d'erreur et de surcharge, non observables comme trames, ne sont
   pas comptées : la charge peut être sous-estimée en présence d'erreurs, et l'interface l'indique.
   Sur trace importée sans débit, la charge n'est pas affichée.
-  *Vérification* : la durée calculée pour un corpus de trames est comparée à des vecteurs de
-  référence établis indépendamment (trames encodées bit à bit) ; écart nul en bits. ⚙ sur PCAN, à
+  *Vérification* : la durée calculée pour un corpus de trames classiques, FD ISO et FD non ISO est
+  comparée à des vecteurs de référence établis indépendamment (trames encodées bit à bit) ; écart
+  nul en bits. ⚙ sur PCAN, à
   débit injecté connu, la charge calculée s'écarte de moins de 2 % de la valeur théorique.
 - **EX-VUE-05** [B] **Analyse sans base de données** : bits qui basculent par identifiant, octets
   qui changent, détection de compteurs probables et d'octets de contrôle probables (règles de
@@ -678,7 +718,9 @@ les modèles, la vue par un test de fumée.
   *Vérification* : le modèle de sélection, sollicité par un instant, désigne la trame attendue,
   et inversement ; IHM.
 - **EX-GRA-06** [A] La décimation d'affichage DOIT préserver les extrema : une impulsion d'une
-  seule trame reste visible à toute échelle de zoom.
+  seule trame reste visible à toute échelle de zoom. En direct, une trame délestée par le noyau
+  (`EX-CAP-05`) peut manquer à l'affichage ; le délestage est signalé, et la série relue depuis
+  la trace la contient (`D-39`).
   *Vérification* : trace contenant une impulsion isolée de 1 ms dans une heure de données ; la
   série décimée pour une largeur de 1 920 pixels couvrant l'heure entière contient la valeur
   extrême de l'impulsion (test sur la couche de décimation, sans interface).
@@ -745,13 +787,15 @@ les modèles, la vue par un test de fumée.
 - **EX-EXP-06** [B] Une **alarme** (§2) DOIT être définie par un nom, une expression `EX-EXP` et
   une sévérité (information, avertissement, erreur). Elle est **levée** quand son expression
   devient vraie et **retombe** quand elle cesse de l'être (vers faux ou NA) ; un maintien minimal
-  s'exprime par `held`. Levée et retombée sont des événements horodatés inscrits dans la trace,
-  exposés par le protocole, affichés dans l'interface (état courant et historique) et listés par
-  la ligne de commande. Les alarmes sont enregistrées dans la session. Aucune alarme n'agit sur le
+  s'exprime par `held`. Levée et retombée sont des événements horodatés, exposés par le protocole,
+  affichés dans l'interface (état courant et historique) et listés par la ligne de commande ;
+  pendant un enregistrement, ils sont inscrits dans la trace ; sur une trace déjà enregistrée, ce
+  sont des résultats d'analyse, jamais écrits dans la trace (`D-32`). Les alarmes sont enregistrées dans la session. Aucune alarme n'agit sur le
   bus.
   *Vérification* : scénario injecté sur bus virtuel ; levées et retombées aux instants attendus à
   1 ms près, dont une retombée par passage à NA ; événements présents dans la trace et dans la
-  sortie de la ligne de commande ; IHM pour l'affichage.
+  sortie de la ligne de commande ; mêmes levées et retombées obtenues sur la trace une fois
+  enregistrée, empreinte de la trace inchangée ; IHM pour l'affichage.
 
 ### 5.11 Enregistrement déclenché — `EX-TRG`
 
@@ -885,12 +929,16 @@ sans effet tant qu'elle reste inférieure à la durée pré-déclenchement, sino
 - **EX-SAF-02** [C] Émettre exige un **armement délibéré**, nommant explicitement le canal cible,
   lié à la connexion cliente qui l'a demandé, jamais mémorisé ni restauré. La perte de cette
   connexion (fermeture, plantage, absence de battement pendant 1 s) **désarme** le canal et arrête
-  toute émission dans le délai de `EX-SAF-05`. Le passage en mode émission est une
+  toute émission dans le délai de `EX-SAF-05`, compté depuis le constat de la perte par le démon :
+  à la fermeture de la connexion (fermeture ou plantage du client), ou à défaut au terme de 1 s
+  sans battement (`D-33`). Le passage en mode émission est une
   reconfiguration du canal : l'éventuelle interruption de capture est un événement horodaté de la
-  trace, avec sa durée.
+  trace, avec sa durée. L'armement d'un canal Tier 2 est refusé en v1, avec un message explicite
+  (`D-30`).
   *Vérification* : tentative d'émission sans armement refusée et tracée ; `kill -9` du client
-  armé pendant un rejeu sur bus virtuel → émission arrêtée en moins de 1 s + 50 ms ; événement de
-  reconfiguration présent.
+  armé pendant un rejeu sur bus virtuel → dernière trame émise moins de 50 ms après le `kill` ;
+  client armé suspendu sans fermeture de sa connexion → dernière trame émise moins de 1 s + 50 ms
+  après son dernier battement ; événement de reconfiguration présent ; armement d'un canal de pont Tier 2 simulé refusé.
 - **EX-SAF-03** [C] Une **liste blanche d'identifiants émissibles** DOIT être définie par canal ;
   hors liste, l'émission est refusée avec un message explicite. Elle est **vide par défaut** :
   sans liste, rien n'est émissible (`D-28`). Autoriser tout identifiant exige une entrée
@@ -898,8 +946,7 @@ sans effet tant qu'elle reste inférieure à la durée pré-déclenchement, sino
   configuration du démon ; un jeu de test peut en proposer une, jamais l'imposer. L'ordonnanceur
   du noyau applique la liste, quel que soit le `TxSource` ou le backend.
   *Vérification* : armement sans liste puis émission → refus ; émission d'un identifiant hors
-  liste refusée et tracée, y compris via le pont Tier 2 ; entrée générique acceptée avec
-  avertissement.
+  liste refusée et tracée ; entrée générique acceptée avec avertissement.
 - **EX-SAF-04** [C] ClemCAN DOIT avertir si un identifiant que l'on s'apprête à émettre a été reçu
   sur ce canal depuis son ouverture sans avoir été émis par ClemCAN (risque de collision
   d'arbitrage). En mode non interactif, l'émission est alors refusée, sauf option explicite.
@@ -921,10 +968,16 @@ sans effet tant qu'elle reste inférieure à la durée pré-déclenchement, sino
   rejeu réel**, sur un bus virtuel qu'il ouvre lui-même avec les paramètres des canaux cibles ;
   la réussite est liée à l'empreinte (SHA-256) du jeu, de ses bases, de ses règles et de la liste
   blanche, et consignée dans un registre persistant de ce démon ; toute modification de l'un
-  d'eux l'invalide.
+  d'eux l'invalide. La réussite est jugée conjointement (`D-31`) : le noyau constate lui-même les
+  émissions refusées ou échouées, la conformité à la liste blanche, le nombre de trames émises
+  égal au nombre annoncé et la charge ; la couche 2, qui pilote le galop, constate la conformité
+  des trames émises à leurs règles de contrôle et la déclare au noyau. Le noyau n'inscrit la
+  réussite que si ses constats et cette déclaration sont tous favorables.
   *Vérification* : rejeu réel refusé sans galop ; accepté après galop, même si une assertion
   portant sur une réponse de la cible y est `not_evaluated` ; refusé à nouveau après modification
-  d'une base ; galop exécuté sur un démon, rejeu demandé sur un autre → refusé.
+  d'une base ; galop exécuté sur un démon, rejeu demandé sur un autre → refusé ; galop déclaré
+  réussi par la couche 2 alors qu'une émission a été refusée, ou qu'il manque une trame → non
+  inscrit ; contrôle invalide déclaré par la couche 2 → non inscrit.
 - **EX-SAF-07** [C] Toute trame émise DOIT être journalisée, sans exception et sans possibilité de
   désactiver cette journalisation. Si la journalisation est impossible (disque plein, journal
   fermé), l'émission est refusée.
@@ -959,10 +1012,14 @@ sans effet tant qu'elle reste inférieure à la durée pré-déclenchement, sino
   d'erreur d'exécution ou de bus. Le rapport est lisible par une machine (JSON, schéma versionné
   publié) **et** par un humain (HTML ou texte).
   *Vérification* : un scénario par code retour ; le JSON produit est validé contre le schéma.
-- **EX-AUT-04** [C] Aucune sortie interactive ne DOIT être requise : aucune invite, aucun serveur
-  graphique.
+- **EX-AUT-04** [A, étendue à chaque palier] Aucune sortie interactive ne DOIT être requise :
+  aucune invite, aucun serveur graphique, pour chaque commande dès le palier où elle est livrée.
+  Toute confirmation (canal sans *listen-only*, mode acquittement, collision…) se donne par une
+  option explicite de la commande ; sans elle, la commande se comporte comme si la confirmation
+  avait été refusée, et le signale (`D-34`).
   *Vérification* : la suite fonctionnelle s'exécute avec l'entrée standard fermée et sans
-  variable d'affichage ; aucune commande n'attend d'entrée.
+  variable d'affichage ; aucune commande n'attend d'entrée ; un profil en mode acquittement
+  ouvert sans l'option s'ouvre en écoute seule, avec l'option en mode acquittement.
 
 ### 5.16 Session et internationalisation — `EX-SES`, `EX-I18N`
 
@@ -1116,19 +1173,30 @@ canal générateur et d'un canal enregistreur Tier 1 ; matériel FD de référen
 - **EX-POR-02** [A] Livraison sous forme d'**exécutable autonome** ne nécessitant l'installation
   d'aucun environnement d'exécution chez l'utilisateur (un exécutable Windows, une image portable
   Linux), plus une installation par gestionnaire de paquets pour les usages de développement.
+  L'exécutable autonome complet inclut le pont Tier 2 et python-can ; les bibliothèques propres
+  aux constructeurs (Vector, Kvaser…) restent à installer par l'utilisateur (`D-36`).
   *Vérification* : l'exécutable lance la ligne de commande et le démon dans un environnement neuf
-  (conteneur ou machine virtuelle sans Python ni bibliothèques de développement).
+  (conteneur ou machine virtuelle sans Python ni bibliothèques de développement) ; dans le même
+  environnement, un canal Tier 2 s'ouvre sur le backend virtuel de python-can.
 - **EX-POR-03** [A] Le démon DOIT être livrable et utilisable seul, sans composant graphique.
+  Ce livrable n'inclut pas le pont : l'ouverture d'un canal Tier 2 y est refusée avec un message
+  explicite (`D-36`).
   *Vérification* : livrable du démon seul installé dans un environnement neuf sans bibliothèque
-  graphique ; enregistrement sur bus virtuel.
+  graphique ; enregistrement sur bus virtuel ; ouverture d'un canal Tier 2 refusée avec message.
 - **EX-POR-04** [A] Aucune dépendance à un service en ligne. Fonctionnement intégralement hors
   réseau.
   *Vérification* : suite fonctionnelle exécutée sans accès réseau.
 
 ### 6.4 Sécurité
 
-- **EX-SEC-01** [A] Aucun port en écoute par défaut (`EX-ARC-05`).
-  *Vérification* : celle de `EX-ARC-05`.
+- **EX-SEC-01** [A] Aucun processus de ClemCAN (démon, ligne de commande, interface, pont)
+  N'OUVRE de port réseau en écoute par défaut, en TCP comme en UDP ; seule une option explicite
+  dont c'est l'objet en ouvre un (accès distant, `EX-SEC-02`). Pour le démon, cf. `EX-ARC-05`
+  (`D-35`).
+  *Vérification* : `ss -lntup` (Linux) et `netstat -ano` (Windows) pendant l'exécution de chaque
+  processus dans sa configuration par défaut (démon, enregistrement en ligne de commande,
+  interface en rendu hors écran, pont sur backend simulé) ne montrent aucun socket en écoute de
+  ces processus.
 - **EX-SEC-02** [B] L'accès distant au démon, s'il est activé, DOIT être chiffré et authentifié
   mutuellement : TLS 1.3, certificats serveur et client. Sans certificat client valide, la
   connexion est refusée. [C] L'armement d'émission DOIT être refusé par défaut aux clients
@@ -1152,6 +1220,7 @@ canal générateur et d'un canal enregistreur Tier 1 ; matériel FD de référen
 ## 7. Conformité protocolaire couverte
 
 Références : ISO 11898-1:2015 (CAN classique et CAN FD ISO ; CAN FD non ISO lu, signalé) ;
+spécification CAN FD 1.0 de Bosch, 2012 (durée des trames FD non ISO, `D-37`) ;
 SAE J1939-21 (transport), J1939-73 (diagnostic), J1939-81 (gestion du réseau) ;
 ISO 15765-2:2016 (ISO-TP) ; ISO 14229-1 (UDS) ; spécification AUTOSAR du protocole E2E.
 
@@ -1183,6 +1252,8 @@ ISO 15765-2:2016 (ISO-TP) ; ISO 14229-1 (UDS) ; spécification AUTOSAR du protoc
   scan d'ECU, écriture de paramètres).
 - Écriture BLF (**premier jalon post-v1**, le moins coûteux et le plus utile en échange),
   puis écriture TRC, puis écriture MF4.
+- Émission sur un canal Tier 2, par le pont (`D-30`) ; une fiche devra dire comment le délai
+  d'arrêt d'urgence d'`EX-SAF-05` y est tenu ou amendé.
 
 **Hors v1, non planifié :**
 - Panneaux graphiques interactifs (jauges, boutons, voyants) à la manière de CANoe.
@@ -1219,7 +1290,8 @@ ISO 15765-2:2016 (ISO-TP) ; ISO 14229-1 (UDS) ; spécification AUTOSAR du protoc
 
 Décisions `D-01` à `D-14` arrêtées au terme de l'entretien de conception du 2026-09-19 ;
 `D-15` à `D-23` arrêtées lors de la relecture de cohérence du 2026-10-07 ; `D-24` à `D-29`
-arrêtées lors de la seconde relecture (version 1.2). Toute remise en cause
+arrêtées lors de la seconde relecture (version 1.2) ; `D-30` et suivantes arrêtées lors de
+l'arbitrage de la revue des SRS (version 1.3). Toute remise en cause
 exige une nouvelle fiche, pas une modification silencieuse. Une fiche postérieure prévaut sur le
 point des fiches antérieures qu'elle amende, et le dit.
 
@@ -1240,8 +1312,8 @@ point des fiches antérieures qu'elle amende, et le dit.
 | **D-13** | **Chaque exigence porte un test automatisé** ; l'interface reste une coquille fine avec tests de fumée seulement. *Précisée par `D-23`.* | L'automatisation de clics est fragile et coûteuse ; puisque tout est pilotable sans interface, les tests passent par là | Validation manuelle guidée ; tests limités au noyau |
 | **D-14** | **L'enregistrement est prioritaire** en surcharge ; toute perte est comptée et déclarée | La trace est souvent le seul livrable d'un essai ; un outil de mesure ne mentira jamais par omission | Priorité à l'affichage ; arrêt en erreur |
 | **D-15** | **Enveloppe fondée sur la physique du bus et matériel de référence nommé.** Profil nominal défini par trames (§6.1), débit dérivé de la formule de charge ; débit logiciel validé sur bus virtuel, physique validée sur banc ⚙. Garanties Tier 1 attachées à des couples (pilote, matériel). Sous Linux, le matériel PEAK passe par SocketCAN (`peak_usb`) ; PCAN-Basic est réservé à Windows. Matériel FD de référence : PCAN-USB FD. Point d'accès réseau : le démon. *Amende `D-03`.* | Les chiffres de la v1.0 (≈ 15 000 trames/s par canal classique saturé, ≈ 25 000 par canal FD à 500k/2M) dépassaient le maximum physique ; le PCAN-USB n'a pas de CAN FD ; PCAN-Basic sous Linux exige un pilote hors arbre incompatible avec `peak_usb` sur le même boîtier ; le démon est le seul composant présent sur une cible embarquée | Garder des chiffres agrégés sans profil de trames ; exiger PCAN-Basic sous Linux ; exposer le réseau depuis la couche Python |
-| **D-16** | **Flux vers la couche 2 par abonnement.** La couche 2 ne reçoit que les trames auxquelles elle s'abonne (par canal, identifiant, masque), filtrées par le noyau ; un abonnement d'évaluation est sans perte, un abonnement d'affichage est décimable. Le noyau calcule les statistiques de transport par identifiant (compteurs, périodes, gigue, octets changés, charge) et applique les filtres de capture identifiant/masque ; il conserve le tampon pré-déclenchement. Toute évaluation retardée ou abandonnée est comptée. *Amendée par `D-24`.* | Les contrôles, déclencheurs et statistiques doivent voir chaque trame concernée, alors que la couche 2 ne peut pas suivre le débit ligne et que le noyau ne peut pas porter de logique métier ; les statistiques de transport et le filtrage par identifiant n'en sont pas | Couche 2 recevant tout le débit ; expressions évaluées dans le noyau ; statistiques dans la couche 2 |
-| **D-17** | **Tier 2 par pont.** Un processus Python optionnel ouvre le backend python-can et injecte ses trames dans le noyau par une interface d'injection documentée ; l'émission passe par l'ordonnanceur du noyau, qui transmet au pont. Le noyau reste la seule autorité sur le journal, la liste blanche et l'émission. Les garanties non assurées sont déclarées dans les métadonnées. *Amende `D-03`.* | Concilie l'ouverture Tier 2 avec l'ordonnanceur unique, la journalisation obligatoire et la survie de l'enregistrement | Backends Python propriétaires du bus hors du noyau ; abandon du Tier 2 |
+| **D-16** | **Flux vers la couche 2 par abonnement.** La couche 2 ne reçoit que les trames auxquelles elle s'abonne (par canal, identifiant, masque), filtrées par le noyau ; un abonnement d'évaluation est sans perte, un abonnement d'affichage est décimable. Le noyau calcule les statistiques de transport par identifiant (compteurs, périodes, gigue, octets changés, charge) et applique les filtres de capture identifiant/masque ; il conserve le tampon pré-déclenchement. Toute évaluation retardée ou abandonnée est comptée. *Amendée par `D-24`, précisée par `D-39`.* | Les contrôles, déclencheurs et statistiques doivent voir chaque trame concernée, alors que la couche 2 ne peut pas suivre le débit ligne et que le noyau ne peut pas porter de logique métier ; les statistiques de transport et le filtrage par identifiant n'en sont pas | Couche 2 recevant tout le débit ; expressions évaluées dans le noyau ; statistiques dans la couche 2 |
+| **D-17** | **Tier 2 par pont.** Un processus Python optionnel ouvre le backend python-can et injecte ses trames dans le noyau par une interface d'injection documentée ; l'émission passe par l'ordonnanceur du noyau, qui transmet au pont. Le noyau reste la seule autorité sur le journal, la liste blanche et l'émission. Les garanties non assurées sont déclarées dans les métadonnées. *Amende `D-03`. Amendée par `D-30`, précisée par `D-36`.* | Concilie l'ouverture Tier 2 avec l'ordonnanceur unique, la journalisation obligatoire et la survie de l'enregistrement | Backends Python propriétaires du bus hors du noyau ; abandon du Tier 2 |
 | **D-18** | **Extraction de bits par signal propre au projet**, cantools restant la source du modèle de base de données et l'oracle de test du décodage. | cantools décode des messages entiers et rejette tout le message quand la valeur du multiplexeur n'est pas définie (vérifié sur cantools 44.2), ce qui contredit `EX-DEC-04` et empêche le décodage paresseux par signal (`EX-DEC-11`) ; l'extraction de bits n'est pas du parsing de base de données | Contournement par interception d'exception ; décodage de messages entiers ; correctif amont seul (délai non maîtrisé) |
 | **D-19** | **Écriture DBC par analyseur concret propre au projet**, limité à l'écriture : il conserve chaque octet et la position de chaque définition ; la lecture sémantique reste cantools, oracle de la relecture. Les sections refusées par cantools sont écartées par un filtre isolé avant lecture et conservées pour l'écriture ; un correctif est proposé en amont. *Précise `D-06`.* | cantools ne conserve aucune position source et son écrivain régénère tout (ordre fixe, fins de ligne imposées, tri des `VAL_`) ; il refuse `SGTYPE_`, `CAT_DEF_`, `FILTER`, présents dans des DBC réels (vérifié sur cantools 44.2) | Écrire par cantools ; réécrire la lecture sémantique ; refuser les DBC contenant ces sections |
 | **D-20** | **Écoute seule = mode *listen-only* du contrôleur** par défaut ; mode **acquittement** optionnel et explicite ; **armement lié à la connexion cliente**, révoqué à sa perte (homme mort) ; arrêt d'urgence aussi par la ligne de commande et le protocole. | Seul le *listen-only* garantit qu'aucun bit n'est écrit sur un bus véhicule ; au banc avec un seul calculateur, l'absence d'acquittement fausse le trafic, d'où l'option ; le démon survivant au client, un armement non lié à la connexion laisserait une émission sans témoin ni arrêt | Mode normal par défaut ; armement « pour la session » ; arrêt d'urgence dans l'interface seule |
@@ -1250,10 +1322,21 @@ point des fiches antérieures qu'elle amende, et le dit.
 | **D-23** | **Classes de vérification** auto, ⚙ et IHM (§1.1). La construction échoue si une exigence d'un palier livré n'a aucun test auto ; les tests ⚙ et IHM figurent dans la matrice, avec leur dernier résultat. *Précise `D-13`.* | Certaines exigences sont matérielles ou propres à l'interface ; sans classe déclarée, elles seraient couvertes par des tests vides, ou la construction échouerait dès le premier jalon | Tout automatiser, y compris le matériel ; validation manuelle non tracée |
 | **D-24** | **Abonnements d'évaluation bornés, jamais de contre-pression.** Chaque abonnement d'évaluation a une file bornée (taille en trames fixée à l'abonnement, configurable, défaut 65 536). File pleine : les trames suivantes de cet abonnement sont abandonnées jusqu'à ce qu'elle se vide de moitié ; l'abandon produit un événement horodaté portant l'intervalle et le nombre de trames, et tout résultat dépendant de cet intervalle (violation, déclenchement, alarme, verdict) est « non évaluable ». L'enregistrement n'est jamais affecté. *Amende `D-16`, dont l'abonnement d'évaluation « sans perte » devient « non décimé, à file bornée ».* | `D-16` déclarait l'évaluation « sans perte » tout en comptant les abandons : une file non bornée épuise la mémoire d'une cible embarquée, une contre-pression mettrait l'enregistrement en danger, ce que `D-14` interdit | File non bornée ; contre-pression sur le noyau ; abandon silencieux |
 | **D-25** | **Logique à trois valeurs pour NA** (Kleene) ; une condition n'est satisfaite que si elle vaut vrai ; un passage depuis ou vers NA n'est pas un front ; une assertion entièrement NA est `not_evaluated`. *Précise `EX-EXP-03`.* | Avec « toute comparaison impliquant NA est fausse », `!(s > 3)` devenait vraie sur un signal absent : une assertion ou un filtre pouvait réussir sur une donnée inexistante. La première réception d'un signal aurait aussi produit un faux front | Comparaisons fausses sur NA ; NA traité comme zéro ; erreur d'évaluation sur NA |
-| **D-26** | **Le galop d'essai valide l'émission, pas la réaction**, et il est exécuté et consigné par le démon qui fera le rejeu réel. *Précise `EX-SAF-06`.* | La cible est absente du bus virtuel : exiger les assertions rendait le galop impossible. Quand un PC pilote une cible distante, un registre côté client pouvait valider un galop fait sur une autre machine que celle qui émet | Assertions exigées ; registre tenu par le client ; galop facultatif |
+| **D-26** | **Le galop d'essai valide l'émission, pas la réaction**, et il est exécuté et consigné par le démon qui fera le rejeu réel. *Précise `EX-SAF-06`. Précisée par `D-31`.* | La cible est absente du bus virtuel : exiger les assertions rendait le galop impossible. Quand un PC pilote une cible distante, un registre côté client pouvait valider un galop fait sur une autre machine que celle qui émet | Assertions exigées ; registre tenu par le client ; galop facultatif |
 | **D-27** | **Fonction contre interaction de visualisation, registre de commandes unique.** Seules les fonctions (§2) doivent exister en ligne de commande ; l'interface les déclenche par le même registre que la ligne de commande. *Précise `EX-ARC-06`.* | Exiger un équivalent pour chaque action d'interface (zoom, curseurs) était irréalisable et sans valeur ; un registre partagé rend la couverture vérifiable mécaniquement et garantit que l'interface reste une coquille | Équivalent pour toute action ; liste maintenue à la main |
 | **D-28** | **Moindre privilège par défaut** : liste blanche d'émission vide par défaut ; accès local au démon limité à un groupe ; armement réservé à un second groupe. *Complète `D-20`.* | Une liste blanche absente qui autorise tout annulerait le garde-fou au moment où il compte (atelier, véhicule) ; sans droits sur le socket local, tout processus de la machine pourrait armer l'émission | Liste absente = tout autorisé ; socket local ouvert à tous ; un seul niveau d'accès |
 | **D-29** | **Compteurs régénérés en continu au rejeu**, pour tout identifiant couvert par une règle, et non seulement pour les trames modifiées. *Précise `EX-CHK-05`.* | La sélection d'une partie des trames d'un identifiant et la boucle créaient des sauts de compteur que la cible rejette ; régénérer en continu couvre ces cas et rend les octets d'origine quand rien n'a changé | Recalcul des seules trames modifiées ; interdiction de filtrer un identifiant protégé |
+| **D-30** | **Pas d'émission en Tier 2 en v1.** L'armement d'un canal Tier 2 est refusé ; le pont est en réception seule. Le délai d'arrêt d'urgence d'`EX-SAF-05` vaut donc sans exception pour tout canal armable. L'émission par le pont est reportée après la v1 (§8). *Amende `D-17`.* | Le délai d'`EX-SAF-05` court jusqu'à la dernière trame émise, files du système et du matériel vidées. Par le pont, une trame remise à python-can est dans la file du pilote : son vidage est une méthode optionnelle que tous les backends n'implémentent pas, socketcand ajoute un trajet réseau, et l'ordonnancement d'un processus Python n'est pas borné. Une file bornée côté pont limite le nombre de trames émises après l'arrêt, pas le délai. Le besoin d'émission v1 est couvert par le Tier 1 (matériel PEAK). Le report n'empêche rien : l'émission par l'ordonnanceur unique reste l'architecture cible du pont | Exception de Tier 2 à `EX-SAF-05` (délai garanti jusqu'au pont seulement, armement Tier 2 soumis à confirmation) ; délai Tier 2 mesuré sans seuil, sans amender `EX-SAF-05` (assouplissement silencieux) |
+| **D-31** | **Galop d'essai jugé conjointement.** Le « démon » d'`EX-SAF-06` est le noyau : il ouvre le bus virtuel, tient le registre et constate lui-même ce qui relève du transport (émissions refusées ou échouées, liste blanche, nombre de trames émises égal au nombre annoncé, charge). La couche 2 pilote le galop comme un rejeu, depuis n'importe quel poste, constate la conformité des trames émises à leurs règles de contrôle et la déclare au noyau. Le noyau n'inscrit la réussite que si tous ces constats sont favorables. *Précise `EX-SAF-06` et `D-26`.* | Le noyau ne peut ni lire un jeu de test ni recalculer un compteur ou un contrôle (`EX-ARC-03`) : il ne peut pas juger seul. Exiger la couche 2 sur la machine du démon rendrait Python obligatoire sur une cible qui émet et empêcherait le pilotage à distance (`D-15`). Le registre fait déjà confiance à l'empreinte fournie par le client ; la déclaration de conformité est de même nature : elle protège contre l'erreur, pas contre un compte autorisé malveillant | Jugement par le noyau seul (logique métier dans le noyau) ; couche 2 obligatoire sur la machine du démon ; réussite déclarée par le client seul (le noyau ne constaterait rien) |
+| **D-32** | **Événements d'analyse inscrits dans la trace en direct seulement.** Pendant un enregistrement, les violations (`EX-CHK-03`) et les levées et retombées d'alarme (`EX-EXP-06`) sont inscrites comme événements dans la trace en cours. Sur une trace déjà enregistrée, ce sont des résultats d'analyse : visibles dans la chronologie, exploitables comme condition, exportables, jamais écrits dans la trace. Leur support est tranché par `O-08`. L'événement de déclenchement (`EX-TRG-04`) n'est pas concerné : l'enregistrement déclenché n'existe qu'en direct. *Précise `EX-CHK-03` et `EX-EXP-06`.* | Une trace est une donnée de mesure, jamais modifiée en place (§2). Hors ligne, ces résultats se recalculent depuis la trace, les bases et les règles. Une copie annotée dupliquerait la trace à chaque analyse, soit plusieurs gigaoctets par heure au profil nominal | Copie annotée de la trace à chaque analyse ; écriture dans la trace d'origine |
+| **D-33** | **Délai de désarmement compté depuis le constat de la perte.** Le démon constate la perte de la connexion armée à sa fermeture (fermeture ou plantage du client) ou, à défaut, au terme de 1 s sans battement ; le délai d'`EX-SAF-05` court depuis ce constat. Un plantage arrête donc l'émission en moins de 50 ms ; un client figé, en moins de 1 s + 50 ms après son dernier battement. *Précise `EX-SAF-02`.* | Le délai d'`EX-SAF-05` part de la réception d'une commande, absente en cas de perte de connexion. Le plantage d'un client ferme sa connexion, ce que le démon voit sans attendre : tolérer 1 s de plus laisserait émettre sans témoin. Le battement ne sert qu'au client figé ou à la liaison coupée sans fermeture | Borne unique de 1 s + 50 ms après le dernier battement, quelle que soit la cause |
+| **D-34** | **Aucune question en ligne de commande dès le palier A.** `EX-AUT-04` passe au palier A, étendue à chaque palier comme `EX-AUT-01`. Toute confirmation se donne par une option explicite ; sans elle, la commande se comporte comme si la confirmation avait été refusée, et le signale. *Amende `EX-AUT-04`.* | Des confirmations existent dès le palier A (canal sans *listen-only*, `EX-SAF-01` ; profil en mode acquittement, `EX-SES-04`). Une invite bloquerait un script ou un enregistreur sans opérateur. L'absence de serveur graphique était déjà exigée au palier A par la vérification d'`EX-ARC-06` | Garder le palier C (commandes des paliers A et B pouvant bloquer, reprise au palier C) |
+| **D-35** | **Aucun port en écoute, pour tout processus de ClemCAN.** `EX-SEC-01` couvre le démon, la ligne de commande, l'interface et le pont, en TCP comme en UDP ; seule une option explicite dont c'est l'objet ouvre un port. `EX-ARC-05` reste la règle propre au démon. *Précise `EX-SEC-01`.* | `EX-SEC-01` ne nommait pas son sujet, et sa vérification ne contrôlait que le démon. La couche 2 et l'interface dépendent de nombreuses bibliothèques, dont l'une peut ouvrir un port sans que le code du projet le demande : seule une vérification sur chaque processus le détecte | Règle limitée au démon |
+| **D-36** | **Pont inclus dans l'exécutable autonome et lancé par le démon.** L'exécutable autonome complet inclut le pont et python-can ; les bibliothèques des constructeurs restent à la charge de l'utilisateur. Un canal Tier 2 s'ouvre par le même protocole qu'un canal Tier 1 : le démon lance alors le pont, le surveille, et inscrit sa fin ou son plantage comme événement. Le livrable du démon seul, sans Python, n'inclut pas le pont et refuse l'ouverture d'un canal Tier 2. *Précise `D-17`, `EX-POR-02` et `EX-POR-03`.* | Lire un adaptateur Tier 2 ne doit pas exiger d'installer un environnement d'exécution (`EX-POR-02`). Une ouverture uniforme garde une seule commande pour tous les canaux ; le démon, parent du pont, détecte sa fin sans délai ni protocole supplémentaire (`EX-CAP-04`). Les bibliothèques des constructeurs sont propriétaires et livrées par chacun d'eux | Pont installé à part par le gestionnaire de paquets et lancé par l'utilisateur (Python requis pour lire un adaptateur Tier 2, deux procédures d'ouverture) |
+| **D-37** | **Durée de trame exacte aussi en CAN FD non ISO.** Sur un canal en FD non ISO, la durée d'une trame se calcule par la même fonction qu'en FD ISO, selon la spécification CAN FD 1.0 de Bosch (2012), sans compteur de bourrage ; l'exigence d'écart nul en bits sur vecteurs de référence s'applique. *Précise `EX-VUE-04`.* | `EX-VUE-04` ne définissait la durée qu'en ISO, alors qu'un canal peut être configuré en FD non ISO (`EX-BUS-02`) et que §7 en prévoit la lecture. La différence est fixe et documentée ; appliquer la formule ISO allongerait chaque trame de quelques bits, ce qui peut dépasser l'écart de 2 % sur les trames courtes | Formule ISO appliquée au non ISO, charge signalée comme approchée |
+| **D-38** | **Cas dégradés du transport : le réassemblage se comporte comme le nœud récepteur.** J1939 : `TP.DT` déjà reçue ignorée et comptée, sauf retransmission demandée par une CTS ; nouvelle annonce pour un couple d'adresses en session → session ouverte close « remplacée » ; chaque attente suit la temporisation du nœud qui attend (BAM : T1 ; RTS/CTS : T3, T2, T1, T4), Tr et Th ne closant aucune session. ISO-TP : numéro de séquence erroné ou répété → transmission incomplète ; trame unique ou première trame pendant une réception → réception close « interrompue », la nouvelle est traitée ; trame consécutive hors réception ignorée ; débordement → transmission incomplète. Le résultat `transport_incomplete` porte son motif (`D-40`). *Précise `EX-DEC-07` et `EX-DEC-09`.* | Ces cas figuraient dans les vérifications sans issue définie, alors que les vecteurs s'écrivent avant le code (R4). Se comporter comme le récepteur montre ce que le calculateur a réellement accepté ; un observateur plus tolérant présenterait comme complets des messages rejetés par leur destinataire | Réassemblage tolérant, récupérant le plus de données possible ; abandon de session à toute anomalie, doublons compris |
+| **D-39** | **Délestage distinct de la décimation.** La décimation (§2) réduit les points d'une série décodée en préservant les extrema ; elle est faite par la couche 2. Le délestage (§2) est l'abandon, par le noyau, de trames d'un abonnement d'affichage dont le consommateur ne suit pas : compté, signalé, sans garantie d'extrema, sans effet sur l'enregistrement. *Précise `D-16`, `EX-CAP-05` et `EX-GRA-06`.* | Le noyau ne décode aucun signal (`EX-ARC-03`) : il ne peut pas préserver les extrema d'un signal. Un même mot pour deux opérations aux garanties opposées rendait `EX-GRA-06` intenable en surcharge | Préservation des extrema par le noyau (décodage dans le noyau) ; un seul terme pour les deux opérations |
+| **D-40** | **`transport_incomplete` est un résultat d'analyse, jamais un événement de la trace.** Il est horodaté, compté, porte son motif et figure dans la chronologie. *Précise `EX-DEC-07` et `EX-DEC-09`.* | Le réassemblage ne s'exécute que si un affichage, un export ou une expression le demande (`EX-DEC-11`) : l'inscrire dans la trace rendrait son contenu dépendant des vues ouvertes pendant l'enregistrement. Le résultat se recalcule à l'identique depuis la trace | Inscription dans la trace quand le réassemblage est actif en direct ; réassemblage systématique à la réception (contraire à `EX-DEC-11`) |
 
 ---
 
@@ -1270,6 +1353,7 @@ point des fiches antérieures qu'elle amende, et le dit.
 | **O-05** | Format du jeu de test (`.tct`) : YAML, TOML ou CSV structuré | Jalon C2 | Lisibilité d'un diff Git, expressivité (valeurs de signaux, périodes), facilité de génération par script |
 | **O-06** | Opportunité d'une interface web **de supervision** (état, démarrage/arrêt, récupération de trace) | Après le palier C | Besoin réel constaté ; ne remet pas en cause `EX-ARC-05` (activation explicite) |
 | **O-07** | Stratégie de reprise après bus-off par défaut (`EX-BUS-07`) | Jalon C1 | Comportement attendu en véhicule autonome |
+| **O-08** | Support des résultats d'analyse d'une trace déjà enregistrée (violations, alarmes, `D-32`) : dans la session ou dans un fichier annexe | Palier B, avant les contrôles hors ligne | Partage avec la trace (`EX-ANA-02`), lisibilité d'un diff de session, coût de recalcul |
 
 ---
 
